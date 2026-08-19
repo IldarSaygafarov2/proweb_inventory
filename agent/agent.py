@@ -31,8 +31,8 @@ import requests
 #  КОНФИГУРАЦИЯ
 # ============================================================
 
-BACKEND_URL = "https://inventory.example.com/api/inventory/"  # ← адрес твоего Django-эндпоинта
-API_TOKEN = "PUT-YOUR-SECRET-TOKEN-HERE"                       # ← общий токен агентов
+BACKEND_URL = "https://test/api/inventory/"  # ← адрес твоего Django-эндпоинта
+API_TOKEN = "token"                       # ← общий токен агентов
 TIMEOUT = 15          # таймаут запроса, сек
 SEND_RETRIES = 5      # попыток отправки (на случай, если сеть при загрузке ещё не поднялась)
 RETRY_DELAY = 20      # пауза между попытками, сек
