@@ -22,7 +22,9 @@ services:
       DB_HOST: db
       DB_PORT: 5432
     ports:
-      - "8000:8000"
+      # Публикуем только на localhost — снаружи сервера порт недоступен,
+      # достучаться можно только через системный nginx (проксирует сюда).
+      - "127.0.0.1:${HTTP_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
