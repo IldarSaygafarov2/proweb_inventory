@@ -13,6 +13,14 @@ CHANNEL_ID = os.environ.get("CHANNEL_ID")
 
 API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 
+SPECS_LABELS = {
+    "cpu": "Процессор",
+    "ram": "Оперативная память",
+    "motherboard": "Материнская плата",
+    "ssd": "Накопитель",
+    "gpu": "Видеокарта",
+}
+
 
 def _format_message(machine, created: bool, changes: dict) -> str:
     role = "Учительский" if machine.is_teacher else "Ученический"
@@ -21,11 +29,17 @@ def _format_message(machine, created: bool, changes: dict) -> str:
     lines = [
         f"{'🆕 Новый компьютер' if created else '♻️ Изменение конфигурации'}: {machine.pc}",
         f"Кабинет {cabinet} · {role}",
+        "",
     ]
+    for field, label in SPECS_LABELS.items():
+        lines.append(f"{label}: {getattr(machine, field, '')}")
+
     if changes:
         lines.append("")
+        lines.append("Изменения:")
         for field, diff in changes.items():
-            lines.append(f"{field}: {diff['old']!r} → {diff['new']!r}")
+            label = SPECS_LABELS.get(field, field)
+            lines.append(f"{label}: {diff['old']!r} → {diff['new']!r}")
 
     return "\n".join(lines)
 
