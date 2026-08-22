@@ -1,20 +1,3 @@
-"""
-agent.py — агент инвентаризации для Windows.
-
-Что делает при каждом запуске:
-  1. Собирает характеристики ПК (CPU, RAM, плата, диск, GPU).
-  2. Сравнивает с последним успешно отправленным снимком (локальный кэш).
-  3. Отправляет данные на Django-бэкенд (POST).
-  4. Кэш обновляет только после успешной отправки — чтобы не потерять
-     изменение, если в момент запуска не было сети.
-
-Зависимости:
-    pip install wmi pywin32 requests
-
-Запуск:
-    python agent.py
-"""
-
 import os
 import sys
 import json
@@ -26,18 +9,12 @@ import winreg
 import wmi
 import requests
 
+BACKEND_URL = "http://189.74.96.120/api/inventory/"
+API_TOKEN = "b5472803d87544ac1b43f8e08a78e37dadb95cb7"
+TIMEOUT = 15
+SEND_RETRIES = 5
+RETRY_DELAY = 20
 
-# ============================================================
-#  КОНФИГУРАЦИЯ
-# ============================================================
-
-BACKEND_URL = "https://test/api/inventory/"  # ← адрес твоего Django-эндпоинта
-API_TOKEN = "token"                       # ← общий токен агентов
-TIMEOUT = 15          # таймаут запроса, сек
-SEND_RETRIES = 5      # попыток отправки (на случай, если сеть при загрузке ещё не поднялась)
-RETRY_DELAY = 20      # пауза между попытками, сек
-
-# Кэш и лог кладём в ProgramData — доступно всем пользователям и системной задаче
 _BASE_DIR = os.path.join(os.environ.get("PROGRAMDATA", os.getcwd()), "PCInventory")
 os.makedirs(_BASE_DIR, exist_ok=True)
 CACHE_FILE = os.path.join(_BASE_DIR, "last_snapshot.json")
@@ -51,30 +28,23 @@ logging.basicConfig(
 )
 
 
-# ============================================================
-#  СБОР ДАННЫХ
-# ============================================================
-
 def _bytes_to_gb(value) -> int:
     return round(int(value) / (1024 ** 3))
 
 
 def get_machine_id() -> str:
-    """Стабильный уникальный ID Windows-установки (первичный ключ в БД)."""
     try:
         with winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE,
-            r"SOFTWARE\Microsoft\Cryptography",
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SOFTWARE\Microsoft\Cryptography",
         ) as key:
             guid, _ = winreg.QueryValueEx(key, "MachineGuid")
             return guid
     except OSError:
-        # запасной вариант — UUID из WMI
         return wmi.WMI().Win32_ComputerSystemProduct()[0].UUID
 
 
 def collect_specs() -> dict:
-    """Возвращает только характеристики железа (то, что отслеживаем на изменения)."""
     c = wmi.WMI()
 
     cpu = c.Win32_Processor()[0].Name.strip()
@@ -100,16 +70,11 @@ def collect_specs() -> dict:
 
 
 def build_payload(specs: dict) -> dict:
-    """Формирует тело запроса — плоский формат, как в исходном JSON."""
     payload = {"pc": wmi.WMI().Win32_ComputerSystem()[0].Name}
-    payload.update(specs)  # cpu, ram, motherboard, ssd, gpu
+    payload.update(specs)
     payload["last_update"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     return payload
 
-
-# ============================================================
-#  ЛОКАЛЬНЫЙ ДИФ
-# ============================================================
 
 def load_cache() -> dict:
     try:
@@ -125,7 +90,6 @@ def save_cache(specs: dict) -> None:
 
 
 def diff_specs(old: dict, new: dict) -> dict:
-    """Возвращает {поле: {'old': ..., 'new': ...}} по изменившимся полям."""
     changes = {}
     keys = set(old) | set(new)
     for key in keys:
@@ -136,13 +100,9 @@ def diff_specs(old: dict, new: dict) -> dict:
     return changes
 
 
-# ============================================================
-#  ОТПРАВКА
-# ============================================================
-
 def send(payload: dict) -> bool:
     headers = {
-        "Authorization": f"Token {API_TOKEN}",   # под DRF TokenAuthentication
+        "Authorization": f"Token {API_TOKEN}",
         "Content-Type": "application/json",
     }
     for attempt in range(1, SEND_RETRIES + 1):
@@ -151,7 +111,7 @@ def send(payload: dict) -> bool:
                 BACKEND_URL, json=payload, headers=headers, timeout=TIMEOUT
             )
             resp.raise_for_status()
-            logging.info("Отправлено успешно (HTTP %s)", resp.status_code)
+            logging.info("Отправлено успешно (HTTP %s) На ссылку (%s)", resp.status_code, BACKEND_URL)
             return True
         except requests.RequestException as e:
             logging.warning("Попытка %s/%s не удалась: %s", attempt, SEND_RETRIES, e)
@@ -161,10 +121,6 @@ def send(payload: dict) -> bool:
     return False
 
 
-# ============================================================
-#  ГЛАВНАЯ ЛОГИКА
-# ============================================================
-
 def main() -> int:
     try:
         specs = collect_specs()
@@ -172,8 +128,6 @@ def main() -> int:
         logging.exception("Ошибка сбора данных: %s", e)
         return 1
 
-    # Локальный диф — только для лога. В тело запроса он больше не входит:
-    # изменения вычисляет сервер, сравнивая новые specs с тем, что в БД.
     previous = load_cache()
     changes = diff_specs(previous, specs)
     if changes:
@@ -184,7 +138,6 @@ def main() -> int:
     payload = build_payload(specs)
 
     if send(payload):
-        # Кэш обновляем ТОЛЬКО после успешной отправки
         save_cache(specs)
         return 0
     return 2

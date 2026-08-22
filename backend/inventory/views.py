@@ -1,7 +1,9 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
-from .models import Machine, InventoryChange
+from tg_service.main import send_specs_to_channel
+
+from .models import Machine, InventoryChange, parse_pc_name
 from .serializers import InventorySerializer
 
 
@@ -12,6 +14,9 @@ class InventoryView(APIView):
         data = s.validated_data
 
         machine, created = Machine.objects.get_or_create(pc=data["pc"])
+        if created:
+            machine.cabinet, machine.is_teacher = parse_pc_name(data["pc"])
+
         changes = {}
         if not created:
             for f in Machine.SPEC_FIELDS:
@@ -25,5 +30,11 @@ class InventoryView(APIView):
             setattr(machine, f, data[f])
         machine.last_update = data["last_update"]
         machine.save()
+
+        # В телеграм-группу шлём только когда есть что сообщить (новый ПК или
+        # реальное изменение характеристик) — обычный heartbeat без изменений
+        # группу не спамит. Сбой отправки не должен ронять ответ агенту.
+        if created or changes:
+            send_specs_to_channel(machine, created, changes)
 
         return Response({"status": "ok", "changed": bool(changes), "changes": changes})

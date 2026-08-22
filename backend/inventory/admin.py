@@ -13,8 +13,9 @@ class InventoryChangeInline(admin.TabularInline):
 
 @admin.register(Machine)
 class MachineAdmin(admin.ModelAdmin):
-    list_display = ("pc", "cpu", "ram", "motherboard", "ssd", "gpu", "last_update", "last_seen")
-    search_fields = ("pc", "cpu", "ram", "motherboard", "ssd", "gpu")
+    list_display = ("pc", "cabinet", "is_teacher", "cpu", "ram", "motherboard", "ssd", "gpu", "last_update", "last_seen")
+    list_filter = ("is_teacher", "cabinet")
+    search_fields = ("pc", "cabinet", "cpu", "ram", "motherboard", "ssd", "gpu")
     inlines = [InventoryChangeInline]
 
 
